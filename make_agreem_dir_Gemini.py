@@ -21,6 +21,18 @@ try:
 except Exception as e:
     raise SystemExit(f"Не установлены зависимости: {e}")
 
+# Предварительно скомпилированные регулярные выражения
+CASE_NUM_PATTERN = re.compile(r"\b0+(\d{5,})\b")
+CASE_NUM_FALLBACK_PATTERN = re.compile(r"\b\d{6,9}\b")
+AMOUNT_PATTERNS = [
+    re.compile(r"(?:amount of|USD|\$)\s*([0-9][0-9 ,.]*)", flags=re.IGNORECASE),
+    re.compile(r"USD\s*\$?\s*([0-9][0-9 ,.]*)", flags=re.IGNORECASE),
+]
+NON_DIGITS_PATTERN = re.compile(r"[^\d\.]")
+UA_PURPOSE_PATTERN = re.compile(r"у вигляді\s+([^.]+)\.", flags=re.IGNORECASE)
+DATE_US_PATTERN = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+GRANT_AGREEMENT_PATTERN = re.compile(r"Grant Agreement.*\.pdf", flags=re.IGNORECASE)
+
 # ... (функции ua_date, with_thin_space_groups, find_amount, find_ua_purpose, max_date_us остаются без изменений) ...
 
 UA_MONTHS_GEN = {
@@ -43,21 +55,17 @@ def find_case_num_in_crop(page) -> str | None:
     text = top_of_page.extract_text(x_tolerance=1) or ""
     
     # Ищем номер, который начинается с нулей
-    m = re.search(r"\b0+(\d{5,})\b", text)
+    m = CASE_NUM_PATTERN.search(text)
     if m:
         return m.group(1) # Возвращаем число без ведущих нулей
     # Резервный поиск, если не нашли по основному паттерну
-    m2 = re.search(r"\b\d{6,9}\b", text)
+    m2 = CASE_NUM_FALLBACK_PATTERN.search(text)
     return str(int(m2.group(0))) if m2 else None
 
 def find_amount(text_first_page: str) -> Decimal | None:
-    patterns = [
-        r"(?:amount of|USD|\$)\s*([0-9][0-9 ,.]*)",
-        r"USD\s*\$?\s*([0-9][0-9 ,.]*)",
-    ]
-    for pat in patterns:
-        for m in re.finditer(pat, text_first_page, flags=re.IGNORECASE):
-            digits = re.sub(r"[^\d\.]", "", m.group(1))
+    for pat in AMOUNT_PATTERNS:
+        for m in pat.finditer(text_first_page):
+            digits = NON_DIGITS_PATTERN.sub("", m.group(1))
             try:
                 return Decimal(digits)
             except InvalidOperation:
@@ -65,12 +73,12 @@ def find_amount(text_first_page: str) -> Decimal | None:
     return None
 
 def find_ua_purpose(full_text: str) -> str | None:
-    m = re.search(r"у вигляді\s+([^.]+)\.", full_text, flags=re.IGNORECASE)
+    m = UA_PURPOSE_PATTERN.search(full_text)
     return ("у вигляді " + m.group(1).strip()) if m else None
 
 def max_date_us(text_last_page: str) -> datetime.date | None:
     dates = []
-    for m in re.finditer(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", text_last_page):
+    for m in DATE_US_PATTERN.finditer(text_last_page):
         mm, dd, yyyy = map(int, m.groups())
         try:
             dates.append(datetime.date(yyyy, mm, dd))
@@ -230,7 +238,7 @@ def main():
         print("⛔ Не найден шаблон 'Письмо на Банк шаблон.docx' рядом со скриптом.")
         return
 
-    files = [f for f in os.listdir(cwd) if re.fullmatch(r"Grant Agreement.*\.pdf", f, flags=re.IGNORECASE)]
+    files = [f for f in os.listdir(cwd) if GRANT_AGREEMENT_PATTERN.fullmatch(f)]
     if not files:
         print("ℹ️ Нет файлов по маске 'Grant Agreement*.pdf' в папке со скриптом.")
         return
