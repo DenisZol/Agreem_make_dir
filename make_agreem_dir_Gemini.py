@@ -34,7 +34,7 @@ def ua_date(dt: datetime.date) -> str:
     return f"«{dd}» {UA_MONTHS_GEN[dt.month]} {dt.year} року"
 
 def with_thin_space_groups(n: Decimal) -> str:
-    return f"{n:,.2f}".replace(",", " ").replace(".", ".")
+    return f"{n:,.2f}".replace(",", " ").replace(".", ",")
 
 def find_case_num_in_crop(page) -> str | None:
     """Ищет номер дела в верхней части страницы для надежности."""
