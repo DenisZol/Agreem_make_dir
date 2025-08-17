@@ -78,51 +78,64 @@ def max_date_us(text_last_page: str) -> datetime.date | None:
             pass
     return max(dates) if dates else None
 
-# ... (функции _replace_in_paragraph, _replace_in_block, replace_placeholders остаются без изменений) ...
+# ... (функции _replace_in_block, replace_placeholders остаются без изменений) ...
 
 def _replace_in_paragraph(paragraph: Paragraph, placeholders: dict):
-    full_text = "".join(run.text for run in paragraph.runs)
-    for key, value in placeholders.items():
-        if key not in full_text:
-            continue
-        start_index = full_text.find(key)
-        end_index = start_index + len(key)
-        runs_to_modify = []
-        current_pos = 0
-        for run in paragraph.runs:
-            run_len = len(run.text)
-            if start_index < current_pos + run_len and current_pos < end_index:
-                runs_to_modify.append(run)
-            current_pos += run_len
-        if not runs_to_modify:
-            continue
-        first_run = runs_to_modify[0]
-        original_text_before = ""
-        current_pos = 0
-        for run in paragraph.runs:
-            if run is first_run:
-                original_text_before = run.text[:start_index - current_pos]
-                break
-            current_pos += len(run.text)
-        last_run = runs_to_modify[-1]
-        original_text_after = ""
-        current_pos = 0
-        for run in paragraph.runs:
-            run_len = len(run.text)
-            if run is last_run:
-                placeholder_end_in_run = end_index - current_pos
-                original_text_after = run.text[placeholder_end_in_run:]
-                break
-            current_pos += run_len
-        first_run.text = original_text_before + str(value)
-        for i in range(1, len(runs_to_modify)):
-            runs_to_modify[i].text = ""
-        if len(runs_to_modify) == 1:
-            first_run.text += original_text_after
-        else:
-            last_run.text = original_text_after
-        _replace_in_paragraph(paragraph, placeholders)
-        break
+    """Replace placeholders in a paragraph without recursion.
+
+    All placeholders are processed in the order provided by ``placeholders``.
+    The function correctly handles cases where a placeholder spans across
+    several ``Run`` objects within the paragraph."""
+
+    while True:
+        full_text = "".join(run.text for run in paragraph.runs)
+        replaced = False
+
+        for key, value in placeholders.items():
+            start_index = full_text.find(key)
+            if start_index == -1:
+                continue
+
+            end_index = start_index + len(key)
+            runs_to_modify = []
+            current_pos = 0
+            for run in paragraph.runs:
+                run_len = len(run.text)
+                if start_index < current_pos + run_len and current_pos < end_index:
+                    runs_to_modify.append(run)
+                current_pos += run_len
+
+            if not runs_to_modify:
+                continue
+
+            first_run = runs_to_modify[0]
+            last_run = runs_to_modify[-1]
+
+            prefix = suffix = ""
+            current_pos = 0
+            for run in paragraph.runs:
+                run_len = len(run.text)
+                if run is first_run:
+                    prefix = run.text[:start_index - current_pos]
+                if run is last_run:
+                    suffix = run.text[end_index - current_pos:]
+                    break
+                current_pos += run_len
+
+            first_run.text = prefix + str(value)
+            for r in runs_to_modify[1:]:
+                r.text = ""
+
+            if first_run is last_run:
+                first_run.text += suffix
+            else:
+                last_run.text = suffix
+
+            replaced = True
+            break
+
+        if not replaced:
+            break
 
 def _replace_in_block(block, placeholders: dict):
     for p in getattr(block, "paragraphs", []):
